@@ -3,7 +3,8 @@ package UserService;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.logging.Logger;
+//import java.util.logging.Logger;
+import org.apache.log4j.Logger;
 
 public class UserServiceImpl implements UserService{
     protected static final Logger log = Logger.getLogger(UserServiceImpl.class.getName());
@@ -12,11 +13,29 @@ public class UserServiceImpl implements UserService{
     private boolean userIsLogged;
 
     @Override
-    public boolean register(String name, String sureName, String login, String pass, String email, LocalDate birthDate) {
+    public boolean register(String name, String sureName, String login, String pass, String email, LocalDate birthDate)
+            throws UserExistException, IncorrectUserPasswordException {
         User newUser = new User(name, sureName, login, pass, email, birthDate);
-        users.put(newUser.getId() , newUser);
-        //log.info("Registered new user : " + users.get(newUser.getId()));
-        return false;
+        for (User user : users.values()) {
+            if (user.getLogin().equals(login) || user.getEmail().equals(email)) {
+                log.info("Registering new user failed (login and email are not unique)!!!");
+                throw new UserExistException("Registering new user failed (login and email are not unique)!!!");
+            }
+        }
+        if (birthDate.isAfter(LocalDate.now().minusYears(18))) {
+            log.info("User is too young (have to be 18 years old)!!!");
+            return false;
+        }
+        if ((pass.length() < 8) ||
+                (pass.chars().filter(Character::isLowerCase).count() < 1) ||
+                (pass.chars().filter(Character::isUpperCase).count() < 1)) {
+            log.info("Password is too simple (have to be at least 8 chars, have at least one big letter and at least one small letter)!!!");
+            throw new IncorrectUserPasswordException("Password is too weak");
+        }
+
+        users.put(newUser.getId(), newUser);
+        log.info("Registered new user : " + users.get(newUser.getId()));
+        return true;
     }
 
     @Override
@@ -35,12 +54,16 @@ public class UserServiceImpl implements UserService{
     public boolean login(String login, String pass) {
         for (User user : users.values()) {
             if (user.getLogin().equals(login) && user.getPass().equals(pass)) {
-                log.info("Successfull log in of user " + user.getName());
+                log.info("Successful log in of user " + user.getName());
                 loggedInUser = user;
                 userIsLogged = true;
                 return true;
+            } else {
+                log.info("Unsuccessful login attempt of user " + login + " (entered password: " + pass +
+                        ", should be " + user.getPass() + ")");
             }
         }
+        log.info("Unsuccessful login attempt of user " + login + " (user does not exist)");
         return false;
     }
 
@@ -58,10 +81,11 @@ public class UserServiceImpl implements UserService{
     @Override
     public boolean changePass(String newPass) {
         if (userIsLogged) {
-            log.info("Successfull changed password for user " + loggedInUser.getName());
+            log.info("Successful changed password for user " + loggedInUser.getName());
             loggedInUser.setPass(newPass);
             return true;
         } else {
+            log.info("Unsuccessful change password attempt (user not logged in)");
             return false;
         }
     }
